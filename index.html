@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accessibility Escape Room — MyTelco Portal</title>
+<style>
+  html,body{margin:0;background:#0f1620;}
+  #loading{position:fixed;inset:0;display:grid;place-items:center;background:#0f1620;
+    color:#8fa3b8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    font-size:14px;z-index:9999;transition:opacity .3s}
+  #loading.hidden{opacity:0;pointer-events:none}
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="loading">Loading the escape room…</div>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+
+// ============================================================================
+//  A11y Escape Room — MyTelco Portal (React edition)
+//  14 planted accessibility defects across a login → dashboard → support flow.
+//  Pairs hunt bugs; the Defect Tracker keeps score. A "team name" + timer make
+//  it competitive across pairs.
+//
+//  FACILITATOR: the answer key lives in the BUGS array below. Each bug is tagged
+//  with POUR principle, SDLC phase, WCAG ref, and — the key teaching point —
+//  whether automation CATCHES or MISSES it.
+// ============================================================================
+
+const BUGS = [
+  { id: 1, title: "Login: password field has no label", screen: "login",
+    pour: "Perceivable", sdlc: "Dev / local", wcag: "1.3.1 / 4.1.2",
+    auto: "catch", note: "Placeholder-only field. axe flags the missing accessible name." },
+  { id: 2, title: "Login: 'Forgot password?' is a click-only <span>", screen: "login",
+    pour: "Operable", sdlc: "PR / review", wcag: "4.1.2 Name, Role, Value",
+    auto: "miss", note: "Looks like a link, isn't focusable, no role. Keyboard users can't reach it." },
+  { id: 3, title: "Focus outline removed globally", screen: "global",
+    pour: "Operable", sdlc: "Dev / local", wcag: "2.4.7 Focus Visible",
+    auto: "catch", note: "Blanket outline:none. Tab anywhere — you're navigating blind." },
+  { id: 4, title: "Dashboard: status chart image has no alt", screen: "dashboard",
+    pour: "Perceivable", sdlc: "Dev / local", wcag: "1.1.1 Non-text Content",
+    auto: "catch", note: "Conveys real data with no text alternative. axe flags it; humans judge if the alt is meaningful." },
+  { id: 5, title: "Dashboard: colour is the only status indicator", screen: "dashboard",
+    pour: "Perceivable", sdlc: "PR / review", wcag: "1.4.1 Use of Color",
+    auto: "miss", note: "Green/amber dots with no text or icon. Colour-blind users can't tell them apart. Automation can't judge intent." },
+  { id: 6, title: "Dashboard: heading levels skip (h1 → h4)", screen: "dashboard",
+    pour: "Understandable", sdlc: "PR / review", wcag: "1.3.1 Info & Relationships",
+    auto: "catch", note: "Breaks the outline screen-reader users navigate by." },
+  { id: 7, title: "Dashboard: low-contrast secondary text", screen: "dashboard",
+    pour: "Perceivable", sdlc: "Dev / local", wcag: "1.4.3 Contrast",
+    auto: "catch", note: "~2.4:1 grey-on-panel, under the 4.5:1 floor." },
+  { id: 8, title: "'Downgrade' control is a <div>, not a button", screen: "dashboard",
+    pour: "Operable", sdlc: "PR / review", wcag: "4.1.2 Name, Role, Value",
+    auto: "miss", note: "The signature trap: axe passes it clean, keyboard-only testing kills it." },
+  { id: 9, title: "Support form: error not announced to screen readers", screen: "support",
+    pour: "Understandable", sdlc: "Manual / QA", wcag: "3.3.1 / 4.1.3",
+    auto: "miss", note: "No aria-live, no aria-describedby link. SR users submit into silence." },
+  { id: 10, title: "Support form: required field marked with '*' colour only", screen: "support",
+    pour: "Understandable", sdlc: "PR / review", wcag: "3.3.2 Labels or Instructions",
+    auto: "miss", note: "Requiredness conveyed by a red asterisk with no text or aria-required." },
+  { id: 11, title: "Modal: keyboard trap, no Esc, focus not managed", screen: "support",
+    pour: "Operable", sdlc: "Dev / manual", wcag: "2.1.2 / 2.4.3",
+    auto: "miss", note: "Focus isn't moved in or trapped or returned. Esc dead. Mouse users never notice." },
+  { id: 12, title: "Icon-only 'close' button has no accessible name", screen: "support",
+    pour: "Perceivable", sdlc: "Dev / local", wcag: "4.1.2 Name, Role, Value",
+    auto: "catch", note: "A bare ✕ glyph. Screen reader announces 'button' with no purpose. axe flags empty name." },
+  { id: 13, title: "Auto-playing carousel with no pause control", screen: "dashboard",
+    pour: "Operable", sdlc: "PR / review", wcag: "2.2.2 Pause, Stop, Hide",
+    auto: "miss", note: "Moving content over 5s with no way to stop it. Distracting; a barrier for many. Automation can't judge." },
+  { id: 14, title: "Language of page not set (lang attribute)", screen: "global",
+    pour: "Understandable", sdlc: "Dev / local", wcag: "3.1.1 Language of Page",
+    auto: "catch", note: "No lang on <html>. Screen readers may use the wrong pronunciation engine. (In this demo: pretend the root has no lang.)" },
+];
+
+const T = {
+  bg: "#0f1620", panel: "#161f2b", panel2: "#1d2836", line: "#2b3a4d",
+  ink: "#e8eef5", dim: "#8fa3b8", faint: "#5d7186",
+  accent: "#22d3ee", accentDim: "#0e7490",
+  good: "#34d399", bad: "#f87171", warn: "#fbbf24",
+  mono: "'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace",
+  sans: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",
+};
+
+function App() {
+  const [screen, setScreen] = useState("login");
+  const [fixed, setFixed] = useState({});
+  const [open, setOpen] = useState({});
+  const [team, setTeam] = useState("");
+  const [started, setStarted] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [showModal, setShowModal] = useState(false);
+  const [formErr, setFormErr] = useState(false);
+  const [carousel, setCarousel] = useState(0);
+
+  useEffect(() => {
+    if (!started) return;
+    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [started]);
+
+  // bug #13: auto-advancing carousel, deliberately no pause
+  useEffect(() => {
+    const t = setInterval(() => setCarousel((c) => (c + 1) % 3), 3000);
+    return () => clearInterval(t);
+  }, []);
+
+  const count = Object.values(fixed).filter(Boolean).length;
+  const won = count === BUGS.length;
+
+  const toggleFix = (id) => setFixed((f) => ({ ...f, [id]: !f[id] }));
+  const toggleOpen = (id) => setOpen((o) => ({ ...o, [id]: !o[id] }));
+
+  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const ss = String(seconds % 60).padStart(2, "0");
+
+  // ---- shared inline styles ----
+  const S = {
+    input: { width: "100%", padding: "11px 13px", background: T.panel2,
+      border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink,
+      fontFamily: "inherit", fontSize: 14, outline: "none" }, // bug#3 outline killed
+    label: { display: "block", fontSize: 13, fontWeight: 600, margin: "0 0 6px" },
+    field: { margin: "0 0 16px" },
+    btn: { background: T.accent, color: "#04141a", border: "none", borderRadius: 8,
+      padding: "11px 18px", fontWeight: 700, fontSize: 14, cursor: "pointer",
+      fontFamily: "inherit", outline: "none" },
+    ghost: { background: "transparent", color: T.accent,
+      border: `1px solid ${T.accentDim}` },
+    card: { background: T.panel, border: `1px solid ${T.line}`, borderRadius: 12,
+      padding: 22, margin: "18px 0" },
+    tile: { background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 10,
+      padding: 16 },
+  };
+
+  // ============ SCREENS ============
+  const Login = (
+    <div style={{ maxWidth: 380, margin: "0 auto", paddingTop: 30 }}>
+      <h1 style={{ fontSize: 26, letterSpacing: "-.02em", margin: "0 0 6px" }}>
+        Sign in to MyTelco</h1>
+      <p style={{ color: T.dim, fontSize: 14, margin: "0 0 22px" }}>
+        Access your account and support tickets.</p>
+      <div style={S.card}>
+        <div style={S.field}>
+          <label style={S.label} htmlFor="u">Username</label>
+          <input id="u" style={S.input} type="text" />
+        </div>
+        {/* bug #1: no label, placeholder only */}
+        <div style={S.field}>
+          <input style={S.input} type="password" placeholder="Password" />
+        </div>
+        <button style={S.btn} onClick={() => { setScreen("dashboard"); }}>
+          Sign in</button>
+        {/* bug #2: fake link, span with onClick */}
+        <span onClick={() => alert("Reset link sent (demo)")}
+          style={{ display: "inline-block", marginLeft: 14, color: T.accent,
+            cursor: "pointer", fontSize: 13 }}>Forgot password?</span>
+      </div>
+    </div>
+  );
+
+  const statusMap =
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+      `<svg xmlns='http://www.w3.org/2000/svg' width='560' height='90'><rect width='560' height='90' fill='#1d2836'/><circle cx='90' cy='40' r='9' fill='#34d399'/><circle cx='260' cy='40' r='9' fill='#34d399'/><circle cx='430' cy='40' r='9' fill='#fbbf24'/><text x='90' y='72' fill='#8fa3b8' font-size='11' text-anchor='middle' font-family='sans-serif'>Zurich</text><text x='260' y='72' fill='#8fa3b8' font-size='11' text-anchor='middle' font-family='sans-serif'>Bern</text><text x='430' y='72' fill='#8fa3b8' font-size='11' text-anchor='middle' font-family='sans-serif'>Geneve</text></svg>`
+    );
+
+  const promos = ["🎉 Double data weekend — this weekend only",
+    "📱 Trade in your old phone, get CHF 100 credit",
+    "🌍 Roaming in EU now included on all plans"];
+
+  const Dashboard = (
+    <div style={{ maxWidth: 640, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 26, letterSpacing: "-.02em", margin: "0 0 6px" }}>
+        Account overview</h1>
+      {/* bug #7: low contrast text */}
+      <p style={{ color: "#4a5a6d", fontSize: 13, margin: "0 0 18px" }}>
+        Last synced a few moments ago</p>
+
+      {/* bug #13: autoplay carousel, no pause */}
+      <div style={{ ...S.card, background: T.accentDim, color: "#04141a",
+        fontWeight: 700, display: "flex", alignItems: "center", minHeight: 30 }}>
+        {promos[carousel]}
+      </div>
+
+      <div style={S.card}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div style={S.tile}><div style={{ fontSize: 28, fontWeight: 800 }}>CHF 49.90</div>
+            <div style={{ fontSize: 12, color: T.dim, textTransform: "uppercase" }}>Plan</div></div>
+          <div style={S.tile}><div style={{ fontSize: 28, fontWeight: 800 }}>18 GB</div>
+            <div style={{ fontSize: 12, color: T.dim, textTransform: "uppercase" }}>Data used</div></div>
+        </div>
+
+        <p style={{ color: T.dim, fontSize: 14, marginTop: 16 }}>Network status:</p>
+        {/* bug #4: no alt */}
+        <img src={statusMap} width="560" style={{ maxWidth: "100%",
+          borderRadius: 8, border: `1px solid ${T.line}` }} />
+
+        {/* bug #5: colour-only status legend */}
+        <div style={{ display: "flex", gap: 20, marginTop: 12 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: T.dim }}>
+            <span style={{ width: 12, height: 12, borderRadius: 99, background: T.good }} /> </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: T.dim }}>
+            <span style={{ width: 12, height: 12, borderRadius: 99, background: T.warn }} /> </span>
+        </div>
+      </div>
+
+      <div style={S.card}>
+        {/* bug #6: h1 -> h4 skip */}
+        <h4 style={{ fontSize: 19, letterSpacing: "-.02em", margin: "0 0 .4em" }}>
+          Manage your plan</h4>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button style={S.btn} onClick={() => setScreen("support")}>Contact support</button>
+          {/* bug #8: div as button */}
+          <div onClick={() => alert("Downgrade started (demo)")}
+            style={{ ...S.btn, ...S.ghost, display: "inline-block" }}>Downgrade plan</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const Support = (
+    <div style={{ maxWidth: 560, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 26, letterSpacing: "-.02em", margin: "0 0 6px" }}>
+        Contact support</h1>
+      <p style={{ color: T.dim, fontSize: 14, margin: "0 0 18px" }}>
+        Open a ticket and our team will reply by email.</p>
+
+      <div style={S.card}>
+        {/* bug #10: required indicated by red * only */}
+        <div style={S.field}>
+          <label style={S.label} htmlFor="nm">
+            Full name <span style={{ color: T.bad }}>*</span></label>
+          <input id="nm" style={S.input} type="text" />
+        </div>
+        <div style={S.field}>
+          <label style={S.label} htmlFor="em">
+            Email <span style={{ color: T.bad }}>*</span></label>
+          <input id="em" style={S.input} type="email" />
+        </div>
+        <div style={S.field}>
+          <label style={S.label} htmlFor="ms">Message</label>
+          <textarea id="ms" style={{ ...S.input, minHeight: 90 }} />
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button style={S.btn} onClick={() => setFormErr(true)}>Submit ticket</button>
+          <button style={{ ...S.btn, ...S.ghost }} onClick={() => setShowModal(true)}>
+            Support hours</button>
+        </div>
+        {/* bug #9: error not announced, not tied to field */}
+        {formErr && (
+          <div style={{ color: T.bad, fontSize: 13, marginTop: 12 }}>
+            Please complete the required fields.</div>
+        )}
+      </div>
+      <button style={{ ...S.btn, ...S.ghost }} onClick={() => setScreen("dashboard")}>
+        ← Back to dashboard</button>
+    </div>
+  );
+
+  return (
+    <div style={{ background: T.bg, color: T.ink, fontFamily: T.sans, minHeight: "100vh" }}>
+      <style>{`@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+        *{box-sizing:border-box}`}</style>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px" }}>
+        {/* ---------- STAGE ---------- */}
+        <div style={{ borderRight: `1px solid ${T.line}` }}>
+          {/* topbar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 28px",
+            background: T.panel2, borderBottom: `1px solid ${T.line}` }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}>
+              <span style={{ width: 26, height: 26, borderRadius: 7,
+                background: `linear-gradient(135deg,${T.accent},${T.accentDim})`,
+                display: "grid", placeItems: "center", color: "#04141a", fontWeight: 800 }}>M</span>
+              MyTelco</span>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              {screen !== "login" && ["dashboard", "support"].map((s) => (
+                <button key={s} onClick={() => setScreen(s)}
+                  style={{ ...S.btn, ...S.ghost, padding: "7px 12px", fontSize: 12,
+                    ...(screen === s ? { background: T.accentDim, color: T.ink } : {}) }}>
+                  {s}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ padding: "32px 28px" }}>
+            {screen === "login" ? Login : screen === "dashboard" ? Dashboard : Support}
+          </div>
+        </div>
+
+        {/* ---------- INSPECTOR ---------- */}
+        <aside style={{ background: T.panel, padding: 24, position: "sticky", top: 0,
+          height: "100vh", overflowY: "auto" }}>
+          <p style={{ fontFamily: T.mono, fontSize: 12, letterSpacing: ".14em",
+            textTransform: "uppercase", color: T.accent, margin: "0 0 4px" }}>Defect Tracker</p>
+          <p style={{ fontSize: 12, color: T.faint, margin: "0 0 16px", fontFamily: T.mono }}>
+            MyTelco portal · 14 planted issues</p>
+
+          {/* team + timer */}
+          {!started ? (
+            <div style={{ ...S.card, margin: "0 0 16px" }}>
+              <label style={S.label} htmlFor="team">Team name</label>
+              <input id="team" style={S.input} value={team}
+                onChange={(e) => setTeam(e.target.value)} placeholder="e.g. Focus Trap Four" />
+              <button style={{ ...S.btn, marginTop: 12, width: "100%" }}
+                onClick={() => setStarted(true)}>Start the hunt</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "space-between",
+              alignItems: "center", fontFamily: T.mono, fontSize: 13, marginBottom: 16 }}>
+              <span style={{ color: T.dim }}>{team || "Team 1"}</span>
+              <span style={{ color: T.accent }}>⏱ {mm}:{ss}</span>
+            </div>
+          )}
+
+          <div style={{ fontFamily: T.mono, fontSize: 13, color: T.dim, marginBottom: 14 }}>
+            Found: <b style={{ color: T.good, fontSize: 20 }}>{count}</b>
+            <span style={{ color: T.faint }}> / {BUGS.length}</span>
+            <div style={{ height: 6, background: T.panel2, borderRadius: 99, marginTop: 8 }}>
+              <div style={{ height: "100%", width: `${(count / BUGS.length) * 100}%`,
+                background: T.good, borderRadius: 99, transition: "width .3s" }} />
+            </div>
+          </div>
+
+          {BUGS.map((b) => (
+            <div key={b.id} style={{ border: `1px solid ${T.line}`, borderRadius: 9,
+              margin: "0 0 10px", background: T.panel2, overflow: "hidden" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start",
+                padding: "12px 13px", cursor: "pointer" }} onClick={() => toggleOpen(b.id)}>
+                <span onClick={(e) => { e.stopPropagation(); toggleFix(b.id); }}
+                  style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 1,
+                    border: `1.5px solid ${fixed[b.id] ? T.good : T.faint}`,
+                    background: fixed[b.id] ? T.good : "transparent",
+                    display: "grid", placeItems: "center", fontSize: 12, fontWeight: 800,
+                    color: "#04141a" }}>{fixed[b.id] ? "✓" : ""}</span>
+                <span>
+                  <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35,
+                    textDecoration: fixed[b.id] ? "line-through" : "none",
+                    color: fixed[b.id] ? T.faint : T.ink }}>{b.title}</span>
+                  <span style={{ fontFamily: T.mono, fontSize: 10, letterSpacing: ".05em",
+                    color: T.faint, display: "block", marginTop: 3, textTransform: "uppercase" }}>
+                    #{b.id} · {b.wcag}</span>
+                </span>
+              </div>
+              {open[b.id] && (
+                <div style={{ padding: "0 13px 13px 41px", fontSize: 12, color: T.dim }}>
+                  <span style={{ fontFamily: T.mono, fontSize: 10, padding: "2px 7px",
+                    borderRadius: 5, marginRight: 5, border: `1px solid ${T.accentDim}`,
+                    color: T.accent }}>{b.pour}</span>
+                  <span style={{ fontFamily: T.mono, fontSize: 10, padding: "2px 7px",
+                    borderRadius: 5, border: `1px solid #7a5a10`, color: T.warn }}>{b.sdlc}</span>
+                  <p style={{ margin: "8px 0" }}>{b.note}</p>
+                  <p style={{ margin: 0, fontFamily: T.mono, fontSize: 11 }}>
+                    AUTOMATION{" "}
+                    <b style={{ color: b.auto === "catch" ? T.good : T.bad }}>
+                      {b.auto === "catch" ? "✔ CATCHES" : "✘ MISSES"}</b></p>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {won && (
+            <div style={{ textAlign: "center", padding: 20, background: T.panel2,
+              border: `1px solid ${T.good}`, borderRadius: 10, marginTop: 8 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: T.good }}>
+                Escaped in {mm}:{ss}! 🎉</div>
+              <p style={{ margin: "6px 0 0", fontSize: 13, color: T.dim }}>
+                {BUGS.filter((b) => b.auto === "miss").length} of these {BUGS.length} bugs
+                would have slipped past a fully automated pipeline. That gap is the workshop.</p>
+            </div>
+          )}
+        </aside>
+      </div>
+
+      {/* bug #11 + #12: trap modal, icon-only close with no name */}
+      {showModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(6,10,15,.72)",
+          display: "grid", placeItems: "center", padding: 20, zIndex: 50 }}>
+          <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14,
+            padding: 26, maxWidth: 420, width: "100%", position: "relative" }}>
+            {/* bug #12: icon-only, no aria-label */}
+            <div onClick={() => setShowModal(false)}
+              style={{ position: "absolute", top: 14, right: 16, cursor: "pointer",
+                fontSize: 18, color: T.dim }}>✕</div>
+            <h3 style={{ margin: "0 0 .4em", fontSize: 15 }}>Support hours</h3>
+            <p style={{ color: T.dim, fontSize: 14 }}>
+              Available Mon–Fri, 08:00–18:00 CET. For outages call 0800 000 000 any time.</p>
+            {/* bug #11: no Esc handler, no focus management, mouse-only close */}
+            <button style={{ ...S.btn, marginTop: 12 }} onClick={() => setShowModal(false)}>
+              Got it</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+const rootEl = document.getElementById("root");
+ReactDOM.createRoot(rootEl).render(<App />);
+document.getElementById("loading").classList.add("hidden");
+</script>
+</body>
+</html>
