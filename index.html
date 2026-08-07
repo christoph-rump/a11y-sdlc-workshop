@@ -36,46 +36,46 @@ const { useState, useEffect, useRef } = React;
 // ============================================================================
 
 const BUGS = [
-  { id: 1, title: "Login: password field has no label", screen: "login",
+  { id: 1, label: "Missing form label", title: "Login: password field has no label", screen: "login",
     pour: "Perceivable", sdlc: "Dev / local", wcag: "1.3.1 / 4.1.2",
     auto: "catch", note: "Placeholder-only field. axe flags the missing accessible name." },
-  { id: 2, title: "Login: 'Forgot password?' is a click-only <span>", screen: "login",
+  { id: 2, label: "Fake link", title: "Login: 'Forgot password?' is a click-only <span>", screen: "login",
     pour: "Operable", sdlc: "PR / review", wcag: "4.1.2 Name, Role, Value",
     auto: "miss", note: "Looks like a link, isn't focusable, no role. Keyboard users can't reach it." },
-  { id: 3, title: "Focus outline removed globally", screen: "global",
+  { id: 3, label: "No visible focus", title: "Focus outline removed globally", screen: "global",
     pour: "Operable", sdlc: "Dev / local", wcag: "2.4.7 Focus Visible",
     auto: "catch", note: "Blanket outline:none. Tab anywhere — you're navigating blind." },
-  { id: 4, title: "Dashboard: status chart image has no alt", screen: "dashboard",
+  { id: 4, label: "Missing alt text", title: "Dashboard: status chart image has no alt", screen: "dashboard",
     pour: "Perceivable", sdlc: "Dev / local", wcag: "1.1.1 Non-text Content",
     auto: "catch", note: "Conveys real data with no text alternative. axe flags it; humans judge if the alt is meaningful." },
-  { id: 5, title: "Dashboard: colour is the only status indicator", screen: "dashboard",
+  { id: 5, label: "Colour-only meaning", title: "Dashboard: colour is the only status indicator", screen: "dashboard",
     pour: "Perceivable", sdlc: "PR / review", wcag: "1.4.1 Use of Color",
     auto: "miss", note: "Green/amber dots with no text or icon. Colour-blind users can't tell them apart. Automation can't judge intent." },
-  { id: 6, title: "Dashboard: heading levels skip (h1 → h4)", screen: "dashboard",
+  { id: 6, label: "Broken heading order", title: "Dashboard: heading levels skip (h1 → h4)", screen: "dashboard",
     pour: "Understandable", sdlc: "PR / review", wcag: "1.3.1 Info & Relationships",
     auto: "catch", note: "Breaks the outline screen-reader users navigate by." },
-  { id: 7, title: "Dashboard: low-contrast secondary text", screen: "dashboard",
+  { id: 7, label: "Low contrast text", title: "Dashboard: low-contrast secondary text", screen: "dashboard",
     pour: "Perceivable", sdlc: "Dev / local", wcag: "1.4.3 Contrast",
     auto: "catch", note: "~2.4:1 grey-on-panel, under the 4.5:1 floor." },
-  { id: 8, title: "'Downgrade' control is a <div>, not a button", screen: "dashboard",
+  { id: 8, label: "Fake button", title: "'Downgrade' control is a <div>, not a button", screen: "dashboard",
     pour: "Operable", sdlc: "PR / review", wcag: "4.1.2 Name, Role, Value",
     auto: "miss", note: "The signature trap: axe passes it clean, keyboard-only testing kills it." },
-  { id: 9, title: "Support form: error not announced to screen readers", screen: "support",
+  { id: 9, label: "Unannounced error", title: "Support form: error not announced to screen readers", screen: "support",
     pour: "Understandable", sdlc: "Manual / QA", wcag: "3.3.1 / 4.1.3",
     auto: "miss", note: "No aria-live, no aria-describedby link. SR users submit into silence." },
-  { id: 10, title: "Support form: required field marked with '*' colour only", screen: "support",
+  { id: 10, label: "Unclear required field", title: "Support form: required field marked with '*' colour only", screen: "support",
     pour: "Understandable", sdlc: "PR / review", wcag: "3.3.2 Labels or Instructions",
     auto: "miss", note: "Requiredness conveyed by a red asterisk with no text or aria-required." },
-  { id: 11, title: "Modal: keyboard trap, no Esc, focus not managed", screen: "support",
+  { id: 11, label: "Keyboard trap", title: "Modal: keyboard trap, no Esc, focus not managed", screen: "support",
     pour: "Operable", sdlc: "Dev / manual", wcag: "2.1.2 / 2.4.3",
     auto: "miss", note: "Focus isn't moved in or trapped or returned. Esc dead. Mouse users never notice." },
-  { id: 12, title: "Icon-only 'close' button has no accessible name", screen: "support",
+  { id: 12, label: "Unnamed icon button", title: "Icon-only 'close' button has no accessible name", screen: "support",
     pour: "Perceivable", sdlc: "Dev / local", wcag: "4.1.2 Name, Role, Value",
     auto: "catch", note: "A bare ✕ glyph. Screen reader announces 'button' with no purpose. axe flags empty name." },
-  { id: 13, title: "Auto-playing carousel with no pause control", screen: "dashboard",
+  { id: 13, label: "Unstoppable motion", title: "Auto-playing carousel with no pause control", screen: "dashboard",
     pour: "Operable", sdlc: "PR / review", wcag: "2.2.2 Pause, Stop, Hide",
     auto: "miss", note: "Moving content over 5s with no way to stop it. Distracting; a barrier for many. Automation can't judge." },
-  { id: 14, title: "Language of page not set (lang attribute)", screen: "global",
+  { id: 14, label: "Missing page language", title: "Language of page not set (lang attribute)", screen: "global",
     pour: "Understandable", sdlc: "Dev / local", wcag: "3.1.1 Language of Page",
     auto: "catch", note: "No lang on <html>. Screen readers may use the wrong pronunciation engine. (In this demo: pretend the root has no lang.)" },
 ];
@@ -373,10 +373,10 @@ function App() {
               <p style={{ fontSize: 34, fontWeight: 800, color: T.accent, margin: "0 0 6px",
                 fontVariantNumeric: "tabular-nums" }}>{rmm}:{rss}</p>
               <p style={{ fontSize: 13, color: T.chromeMuted, margin: "0 0 16px", lineHeight: 1.5 }}>
-                Hunt with your tools first. Tick off each defect you find below — the
-                descriptions appear when the timer ends.</p>
+                Hunt with your tools first. When you find a defect, tick its type below.
+                The full descriptions and the automation verdict unlock when the timer ends.</p>
 
-              {/* generic tick boxes: progress without spoilers */}
+              {/* short-label tick boxes: enough to record a find, not enough to locate it */}
               <ul style={{ listStyle: "none", padding: 0, margin: "0 0 16px",
                 display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                 {BUGS.map((b) => (
@@ -384,20 +384,20 @@ function App() {
                     <button
                       onClick={() => toggleFix(b.id)}
                       aria-pressed={!!fixed[b.id]}
-                      aria-label={fixed[b.id] ? `Mark defect ${b.id} as not found`
-                                              : `Mark defect ${b.id} as found`}
+                      aria-label={fixed[b.id] ? `Mark "${b.label}" as not found`
+                                              : `Mark "${b.label}" as found`}
                       style={{ width: "100%", display: "flex", alignItems: "center", gap: 8,
-                        padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+                        padding: "8px 10px", borderRadius: 8, cursor: "pointer", textAlign: "left",
                         border: `1px solid ${T.line}`,
                         background: fixed[b.id] ? "rgba(52,211,153,.12)" : T.panel,
-                        color: T.chromeText, font: "inherit", fontSize: 13 }}>
+                        color: T.chromeText, font: "inherit", fontSize: 13, lineHeight: 1.3 }}>
                       <span aria-hidden="true" style={{ width: 18, height: 18, borderRadius: 4,
                         flexShrink: 0, display: "grid", placeItems: "center", fontSize: 12,
                         fontWeight: 800, color: "#04141a",
                         border: `2px solid ${fixed[b.id] ? T.good : T.chromeMuted}`,
                         background: fixed[b.id] ? T.good : "transparent" }}>
                         {fixed[b.id] ? "✓" : ""}</span>
-                      Defect {b.id}
+                      {b.label}
                     </button>
                   </li>
                 ))}
