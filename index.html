@@ -6,18 +6,22 @@
 <title>Accessibility Escape Room — MyTelco Portal</title>
 <style>
   html,body{margin:0;background:#0f1620;}
-  #loading{position:fixed;inset:0;display:grid;place-items:center;background:#0f1620;
+  #status{position:fixed;inset:0;display:grid;place-items:center;background:#0f1620;
     color:#8fa3b8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-    font-size:14px;z-index:9999;transition:opacity .3s}
-  #loading.hidden{opacity:0;pointer-events:none}
+    font-size:14px;z-index:9999;transition:opacity .3s;text-align:center;padding:24px;line-height:1.6}
+  #status.hidden{opacity:0;pointer-events:none}
+  #status .err{color:#f87171;max-width:560px}
+  #status code{font-family:ui-monospace,Menlo,Consolas,monospace;color:#e8eef5;font-size:12px}
 </style>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body>
-<div id="loading">Loading the escape room…</div>
+<div id="status">Loading the escape room…</div>
 <div id="root"></div>
+
+<!-- React + Babel from jsDelivr (reliable CDN). Loaded before the app block. -->
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
 
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useRef } = React;
@@ -401,9 +405,25 @@ function App() {
 }
 
 
-const rootEl = document.getElementById("root");
-ReactDOM.createRoot(rootEl).render(<App />);
-document.getElementById("loading").classList.add("hidden");
+// --- robust mount: only render once React/ReactDOM exist; surface any error ---
+(function mount(){
+  var status = document.getElementById("status");
+  try {
+    if (typeof React === "undefined" || typeof ReactDOM === "undefined") {
+      status.innerHTML = '<div class="err">Could not load React from the CDN.<br>' +
+        'This page needs internet access on first load. If you are on a restricted ' +
+        'network that blocks <code>cdn.jsdelivr.net</code>, try another network ' +
+        '(or use the offline HTML version).</div>';
+      return;
+    }
+    ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+    status.classList.add("hidden");
+  } catch (e) {
+    status.innerHTML = '<div class="err">The app failed to start.<br><code>' +
+      String(e && e.message ? e.message : e) + '</code></div>';
+    console.error(e);
+  }
+})();
 </script>
 </body>
 </html>
