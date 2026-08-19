@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live demo — one element, three tools</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --surface:#ffffff; --line:#dbe1e8;
+    --ink:#16191d; --muted:#5a6572;
+    --brand:#0a5bd3; --brand-dark:#0847a3;
+    --good:#1c7a3e; --bad:#b3261e; --warn:#8a5a00;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  .wrap{max-width:1020px;margin:0 auto;padding:32px 24px 64px}
+  header h1{font-size:30px;letter-spacing:-.02em;margin:0 0 6px}
+  header p{color:var(--muted);font-size:16px;margin:0 0 28px;max-width:70ch}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px;margin:0 0 20px}
+  .card h2{font-size:19px;margin:0 0 6px}
+  .card .lead{color:var(--muted);font-size:15px;margin:0 0 20px;max-width:75ch}
+
+  .pair{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:0 0 6px}
+  .btn{background:var(--brand);color:#fff;border:none;border-radius:9px;
+       padding:13px 24px;font:inherit;font-size:15px;font-weight:650;cursor:pointer}
+  .btn:hover{background:var(--brand-dark)}
+  /* real controls get a clear, deliberate focus ring */
+  .btn:focus-visible,.link:focus-visible{outline:3px solid #ffab00;outline-offset:3px}
+  .btn.secondary{background:#eef2f8;color:var(--brand);border:1px solid #c3d2e8}
+  .btn.secondary:hover{background:#e3eaf5}
+
+  /* the planted defect: a div dressed as a button */
+  .fake{display:inline-block;background:#eef2f8;color:var(--brand);
+        border:1px solid #c3d2e8;border-radius:9px;padding:13px 24px;
+        font-size:15px;font-weight:650;cursor:pointer;user-select:none}
+
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;
+       padding:3px 8px;border-radius:99px;margin-left:8px;vertical-align:middle}
+  .tag.ok{background:#e4f4e9;color:var(--good)}
+  .tag.no{background:#fdecea;color:var(--bad)}
+
+  .hint{background:#fff8e6;border:1px solid #f0d488;border-radius:10px;
+        padding:14px 16px;font-size:14px;color:#6b4a00;margin:18px 0 0}
+  .hint kbd{background:#16191d;color:#fff;border-radius:5px;padding:2px 8px;
+            font:inherit;font-size:13px}
+
+  .reveal{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+          padding:26px;margin:0 0 20px}
+  .verdicts{display:grid;gap:12px;margin-top:18px}
+  .v{border:1px solid var(--line);border-left-width:5px;border-radius:10px;padding:14px 16px;background:#fbfcfe}
+  .v.pass{border-left-color:var(--good)}
+  .v.fail{border-left-color:var(--bad)}
+  .v .t{font-weight:700;font-size:15px}
+  .v .t span{font-weight:700}
+  .v .d{color:var(--muted);font-size:14px;margin-top:3px}
+  .closing{background:#16191d;color:#fff;border-radius:12px;padding:18px 22px;font-size:16px}
+  .closing b{color:#ffd166}
+  footer{margin-top:26px;font-size:13px;color:var(--muted)}
+  footer a{color:var(--brand)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>One element, three tools, three different results</h1>
+    <p>Two controls that look and behave identically to a mouse user. One is a real
+       <code>&lt;button&gt;</code>; the other is a <code>&lt;div&gt;</code> styled to look like one.</p>
+  </header>
+
+  <main>
+    <section class="card" aria-labelledby="try">
+      <h2 id="try">Try them both</h2>
+      <p class="lead">Click each with the mouse — both work. Then put the mouse down and press
+         <kbd style="background:#16191d;color:#fff;border-radius:5px;padding:2px 8px;font-size:13px">Tab</kbd>
+         to move through the page.</p>
+
+      <div class="pair">
+        <button class="btn" onclick="say('Upgrade started (demo)')">Upgrade plan</button>
+        <span class="tag ok">real &lt;button&gt;</span>
+      </div>
+      <div class="pair">
+        <!-- PLANTED DEFECT: div posing as a button - no role, not focusable, no key handler -->
+        <div class="fake" onclick="say('Downgrade started (demo)')">Downgrade plan</div>
+        <span class="tag no">styled &lt;div&gt;</span>
+      </div>
+
+      <p class="hint">
+        Keyboard check: <kbd>Tab</kbd> reaches <strong>Upgrade plan</strong> and shows a clear
+        focus ring. It never reaches <strong>Downgrade plan</strong> — so a keyboard or
+        switch user cannot downgrade their plan at all.
+      </p>
+    </section>
+
+    <section class="reveal" aria-labelledby="rep">
+      <h2 id="rep">What each tool reports</h2>
+      <p class="lead">The same element, checked three ways.</p>
+      <button class="btn secondary" id="toggle" aria-expanded="false" aria-controls="vlist"
+              onclick="toggleVerdicts()">Show what each tool reports</button>
+      <div class="verdicts" id="vlist" hidden>
+        <div class="v pass">
+          <div class="t">Automated scanner — <span style="color:var(--good)">0 issues, all green</span></div>
+          <div class="d">Colour, label and structure all pass. There is no rule for
+            “this looks like a button but is not one”.</div>
+        </div>
+        <div class="v fail">
+          <div class="t">Keyboard only — <span style="color:var(--bad)">cannot reach it</span></div>
+          <div class="d">Tab skips straight past it. There is no way to activate it without a mouse.</div>
+        </div>
+        <div class="v fail">
+          <div class="t">Screen reader — <span style="color:var(--bad)">not announced as a button</span></div>
+          <div class="d">It is read as plain text, so the user gets no signal that it can be activated.</div>
+        </div>
+      </div>
+    </section>
+
+    <p class="closing">
+      Same element, three results. <b>A green scan is where testing starts, not where quality ends.</b>
+    </p>
+  </main>
+
+  <footer>
+    Next up: the <a href="index.html">Accessibility Escape Room</a> — eight planted defects to find.
+  </footer>
+</div>
+
+<script>
+  function say(m){ window.alert(m); }
+  function toggleVerdicts(){
+    var l=document.getElementById('vlist'), b=document.getElementById('toggle');
+    var open=!l.hidden;
+    l.hidden=open;
+    b.setAttribute('aria-expanded', String(!open));
+    b.textContent = open ? 'Show what each tool reports' : 'Hide what each tool reports';
+  }
+</script>
+</body>
+</html>

@@ -3,485 +3,389 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Accessibility Escape Room — MyTelco Portal</title>
+<title>Accessibility Escape Room — MyTelco</title>
 <style>
-  html,body{margin:0;background:#0f1620;}
-  #status{position:fixed;inset:0;display:grid;place-items:center;background:#0f1620;
-    color:#c4d2e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  html,body{margin:0;background:#f4f6f9}
+  #status{position:fixed;inset:0;display:grid;place-items:center;background:#f4f6f9;
+    color:#5a6572;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     font-size:15px;z-index:9999;transition:opacity .3s;text-align:center;padding:24px;line-height:1.6}
   #status.hidden{opacity:0;pointer-events:none}
-  #status .err{color:#ff8a8a;max-width:560px}
-  #status code{font-family:ui-monospace,Menlo,Consolas,monospace;color:#e8eef5;font-size:13px}
+  #status .err{color:#b3261e;max-width:560px}
 </style>
 </head>
 <body>
 <div id="status" role="status">Loading the escape room…</div>
 <div id="root"></div>
+
 <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
+
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect } = React;
 
-
-// ============================================================================
-//  A11y Escape Room — MyTelco Portal (React edition)
-//  14 planted accessibility defects across a login → dashboard → support flow.
-//  Pairs hunt bugs; the Defect Tracker keeps score. A "team name" + timer make
-//  it competitive across pairs.
-//
-//  FACILITATOR: the answer key lives in the BUGS array below. Each bug is tagged
-//  with POUR principle, SDLC phase, WCAG ref, and — the key teaching point —
-//  whether automation CATCHES or MISSES it.
-// ============================================================================
-
+/* ===========================================================================
+   8 planted defects. 4 a scanner can detect, 4 only a person can find.
+   Each has a CORRECT counterpart nearby so participants can compare.
+   =========================================================================== */
 const BUGS = [
-  { id: 1, label: "Missing form label", title: "Login: password field has no label", screen: "login",
-    pour: "Perceivable", sdlc: "Dev / local", wcag: "1.3.1 / 4.1.2",
-    auto: "catch", note: "Placeholder-only field. axe flags the missing accessible name." },
-  { id: 2, label: "Fake link", title: "Login: 'Forgot password?' is a click-only <span>", screen: "login",
-    pour: "Operable", sdlc: "PR / review", wcag: "4.1.2 Name, Role, Value",
-    auto: "miss", note: "Looks like a link, isn't focusable, no role. Keyboard users can't reach it." },
-  { id: 3, label: "No visible focus", title: "Focus outline removed globally", screen: "global",
-    pour: "Operable", sdlc: "Dev / local", wcag: "2.4.7 Focus Visible",
-    auto: "catch", note: "Blanket outline:none. Tab anywhere — you're navigating blind." },
-  { id: 4, label: "Missing alt text", title: "Dashboard: status chart image has no alt", screen: "dashboard",
-    pour: "Perceivable", sdlc: "Dev / local", wcag: "1.1.1 Non-text Content",
-    auto: "catch", note: "Conveys real data with no text alternative. axe flags it; humans judge if the alt is meaningful." },
-  { id: 5, label: "Colour-only meaning", title: "Dashboard: colour is the only status indicator", screen: "dashboard",
-    pour: "Perceivable", sdlc: "PR / review", wcag: "1.4.1 Use of Color",
-    auto: "miss", note: "Green/amber dots with no text or icon. Colour-blind users can't tell them apart. Automation can't judge intent." },
-  { id: 6, label: "Broken heading order", title: "Dashboard: heading levels skip (h1 → h4)", screen: "dashboard",
-    pour: "Understandable", sdlc: "PR / review", wcag: "1.3.1 Info & Relationships",
-    auto: "catch", note: "Breaks the outline screen-reader users navigate by." },
-  { id: 7, label: "Low contrast text", title: "Dashboard: low-contrast secondary text", screen: "dashboard",
-    pour: "Perceivable", sdlc: "Dev / local", wcag: "1.4.3 Contrast",
-    auto: "catch", note: "~2.4:1 grey-on-panel, under the 4.5:1 floor." },
-  { id: 8, label: "Fake button", title: "'Downgrade' control is a <div>, not a button", screen: "dashboard",
-    pour: "Operable", sdlc: "PR / review", wcag: "4.1.2 Name, Role, Value",
-    auto: "miss", note: "The signature trap: axe passes it clean, keyboard-only testing kills it." },
-  { id: 9, label: "Unannounced error", title: "Support form: error not announced to screen readers", screen: "support",
-    pour: "Understandable", sdlc: "Manual / QA", wcag: "3.3.1 / 4.1.3",
-    auto: "miss", note: "No aria-live, no aria-describedby link. SR users submit into silence." },
-  { id: 10, label: "Unclear required field", title: "Support form: required field marked with '*' colour only", screen: "support",
-    pour: "Understandable", sdlc: "PR / review", wcag: "3.3.2 Labels or Instructions",
-    auto: "miss", note: "Requiredness conveyed by a red asterisk with no text or aria-required." },
-  { id: 11, label: "Keyboard trap", title: "Modal: keyboard trap, no Esc, focus not managed", screen: "support",
-    pour: "Operable", sdlc: "Dev / manual", wcag: "2.1.2 / 2.4.3",
-    auto: "miss", note: "Focus isn't moved in or trapped or returned. Esc dead. Mouse users never notice." },
-  { id: 12, label: "Unnamed icon button", title: "Icon-only 'close' button has no accessible name", screen: "support",
-    pour: "Perceivable", sdlc: "Dev / local", wcag: "4.1.2 Name, Role, Value",
-    auto: "catch", note: "A bare ✕ glyph. Screen reader announces 'button' with no purpose. axe flags empty name." },
-  { id: 13, label: "Unstoppable motion", title: "Auto-playing carousel with no pause control", screen: "dashboard",
-    pour: "Operable", sdlc: "PR / review", wcag: "2.2.2 Pause, Stop, Hide",
-    auto: "miss", note: "Moving content over 5s with no way to stop it. Distracting; a barrier for many. Automation can't judge." },
-  { id: 14, label: "Missing page language", title: "Language of page not set (lang attribute)", screen: "global",
-    pour: "Understandable", sdlc: "Dev / local", wcag: "3.1.1 Language of Page",
-    auto: "catch", note: "No lang on <html>. Screen readers may use the wrong pronunciation engine. (In this demo: pretend the root has no lang.)" },
+  { id:1, label:"Missing form label", title:"The “Full name” field has no real label",
+    pour:"Perceivable", wcag:"1.3.1 / 4.1.2", auto:"scanner",
+    note:"It uses a placeholder instead of a <label>. Placeholders vanish on typing and are not a reliable accessible name.",
+    compare:"Compare with the Email field just below it, which is labelled correctly." },
+  { id:2, label:"Low contrast text", title:"The “last synced” line fails contrast",
+    pour:"Perceivable", wcag:"1.4.3", auto:"scanner",
+    note:"Light grey on white, around 2.2:1 - well under the 4.5:1 minimum for body text.",
+    compare:"Compare with the other secondary text on the page, which passes." },
+  { id:3, label:"Missing alt text", title:"The network status image has no alt text",
+    pour:"Perceivable", wcag:"1.1.1", auto:"scanner",
+    note:"The image carries real information (two regions fine, one degraded) with no text alternative.",
+    compare:"Compare with the data-usage chart above it, which has a proper description." },
+  { id:4, label:"Broken heading order", title:"Heading level jumps from h1 to h4",
+    pour:"Understandable", wcag:"1.3.1", auto:"scanner",
+    note:"“Manage your plan” is an h4 directly after the h1, breaking the outline screen-reader users navigate by.",
+    compare:"“Your usage” above it is a correct h2." },
+  { id:5, label:"Fake button", title:"“Downgrade plan” is a <div>, not a button",
+    pour:"Operable", wcag:"4.1.2", auto:"human",
+    note:"No role, not in the tab order, no key handler. A scanner passes it clean; keyboard and screen-reader testing expose it.",
+    compare:"“Upgrade plan” beside it is a real button - Tab reaches it and it shows a focus ring." },
+  { id:6, label:"No visible focus", title:"Focus ring removed on the quick links",
+    pour:"Operable", wcag:"2.4.7", auto:"human",
+    note:"The three quick links suppress their focus outline, so keyboard users cannot see where they are.",
+    compare:"Every other control on this page shows a clear amber focus ring - Tab through and watch it disappear." },
+  { id:7, label:"Keyboard trap", title:"The “Support hours” dialog traps the keyboard",
+    pour:"Operable", wcag:"2.1.2 / 2.4.3", auto:"human",
+    note:"Focus is never moved into it, Esc does nothing, and focus is not returned on close. Mouse users never notice.",
+    compare:"The “Plan details” panel below is a correct disclosure - keyboard-operable, state announced." },
+  { id:8, label:"Unannounced error", title:"The ticket form error is never announced",
+    pour:"Understandable", wcag:"3.3.1 / 4.1.3", auto:"human",
+    note:"The message appears visually but is not in a live region and is not tied to the field, so a screen-reader user submits into silence.",
+    compare:"The newsletter form beside it announces its result correctly via a live region." },
 ];
 
 const T = {
-  bg: "#0f1620", panel: "#161f2b", panel2: "#1d2836", line: "#2b3a4d",
-  ink: "#e8eef5", dim: "#8fa3b8", faint: "#5d7186",
-  // accessible chrome text (>=4.5:1 on panel/panel2) — used for the tracker UI, not the demo app
-  chromeText: "#c4d2e0", chromeMuted: "#a8bccf",
-  accent: "#22d3ee", accentDim: "#0e7490",
-  good: "#34d399", bad: "#f87171", warn: "#fbbf24",
-  mono: "'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace",
-  sans: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",
+  bg:"#f4f6f9", surface:"#ffffff", line:"#dbe1e8", panel:"#eef1f5",
+  ink:"#16191d", muted:"#5a6572",
+  brand:"#0a5bd3", brandDark:"#0847a3", brandSoft:"#eef2f8", brandBorder:"#c3d2e8",
+  good:"#1c7a3e", bad:"#b3261e", warn:"#8a5a00", focus:"#ffab00",
+  sans:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif",
 };
 
-function App() {
-  const [screen, setScreen] = useState("login");
-  const [fixed, setFixed] = useState({});
-  const [team, setTeam] = useState("");
-  const [started, setStarted] = useState(false);
-  const [seconds, setSeconds] = useState(0);
-  const [revealMins, setRevealMins] = useState(10); // facilitator sets before starting
-  const [forceReveal, setForceReveal] = useState(false); // facilitator override
-  const [showModal, setShowModal] = useState(false);
-  const [formErr, setFormErr] = useState(false);
-  const [carousel, setCarousel] = useState(0);
+function App(){
+  const [found,setFound]   = useState({});
+  const [team,setTeam]     = useState("");
+  const [started,setStart] = useState(false);
+  const [secs,setSecs]     = useState(0);
+  const [mins,setMins]     = useState(10);
+  const [force,setForce]   = useState(false);
+  const [modal,setModal]   = useState(false);
+  const [err,setErr]       = useState(false);
+  const [news,setNews]     = useState("");
+  const [details,setDet]   = useState(false);
 
-  useEffect(() => {
-    if (!started) return;
-    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [started]);
+  useEffect(()=>{ if(!started) return;
+    const t=setInterval(()=>setSecs(s=>s+1),1000); return ()=>clearInterval(t); },[started]);
 
-  // bug #13: auto-advancing carousel, deliberately no pause
-  useEffect(() => {
-    const t = setInterval(() => setCarousel((c) => (c + 1) % 3), 3000);
-    return () => clearInterval(t);
-  }, []);
+  const count=Object.values(found).filter(Boolean).length;
+  const won=count===BUGS.length;
+  const toggle=id=>setFound(f=>({...f,[id]:!f[id]}));
+  const pad=n=>String(n).padStart(2,"0");
+  const mm=pad(Math.floor(secs/60)), ss=pad(secs%60);
+  const target=mins*60, revealed=force||(started&&secs>=target);
+  const left=Math.max(0,target-secs);
+  const rmm=pad(Math.floor(left/60)), rss=pad(left%60);
 
-  const count = Object.values(fixed).filter(Boolean).length;
-  const won = count === BUGS.length;
-
-  const toggleFix = (id) => setFixed((f) => ({ ...f, [id]: !f[id] }));
-
-  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const ss = String(seconds % 60).padStart(2, "0");
-  // reveal logic: defects hidden until the timer elapses, or the facilitator overrides
-  const revealSecs = revealMins * 60;
-  const revealed = forceReveal || (started && seconds >= revealSecs);
-  const remain = Math.max(0, revealSecs - seconds);
-  const rmm = String(Math.floor(remain / 60)).padStart(2, "0");
-  const rss = String(remain % 60).padStart(2, "0");
-
-  // ---- shared inline styles ----
-  const S = {
-    input: { width: "100%", padding: "11px 13px", background: T.panel2,
-      border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink,
-      fontFamily: "inherit", fontSize: 14, outline: "none" }, // bug#3 outline killed
-    label: { display: "block", fontSize: 13, fontWeight: 600, margin: "0 0 6px" },
-    field: { margin: "0 0 16px" },
-    btn: { background: T.accent, color: "#04141a", border: "none", borderRadius: 8,
-      padding: "11px 18px", fontWeight: 700, fontSize: 14, cursor: "pointer",
-      fontFamily: "inherit", outline: "none" },
-    ghost: { background: "transparent", color: T.accent,
-      border: `1px solid ${T.accentDim}` },
-    card: { background: T.panel, border: `1px solid ${T.line}`, borderRadius: 12,
-      padding: 22, margin: "18px 0" },
-    tile: { background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 10,
-      padding: 16 },
+  /* styles for the app under test */
+  const S={
+    input:{width:"100%",padding:"11px 13px",background:"#fff",border:`1px solid ${T.line}`,
+           borderRadius:8,color:T.ink,font:"inherit",fontSize:14},
+    label:{display:"block",fontSize:13,fontWeight:650,margin:"0 0 6px",color:T.ink},
+    field:{margin:"0 0 16px"},
+    btn:{background:T.brand,color:"#fff",border:"none",borderRadius:8,padding:"11px 18px",
+         font:"inherit",fontSize:14,fontWeight:650,cursor:"pointer"},
+    btn2:{background:T.brandSoft,color:T.brand,border:`1px solid ${T.brandBorder}`,
+          borderRadius:8,padding:"11px 18px",font:"inherit",fontSize:14,fontWeight:650,cursor:"pointer"},
+    card:{background:T.surface,border:`1px solid ${T.line}`,borderRadius:12,padding:22,margin:"0 0 18px"},
+    h2:{fontSize:19,margin:"0 0 10px",letterSpacing:"-.01em"},
+    muted:{color:T.muted,fontSize:14},
   };
 
-  // ============ SCREENS ============
-  const Login = (
-    <div style={{ maxWidth: 380, margin: "0 auto", paddingTop: 30 }}>
-      <h1 style={{ fontSize: 26, letterSpacing: "-.02em", margin: "0 0 6px" }}>
-        Sign in to MyTelco</h1>
-      <p style={{ color: T.dim, fontSize: 14, margin: "0 0 22px" }}>
-        Access your account and support tickets.</p>
-      <div style={S.card}>
-        <div style={S.field}>
-          <label style={S.label} htmlFor="u">Username</label>
-          <input id="u" style={S.input} type="text" />
-        </div>
-        {/* bug #1: no label, placeholder only */}
-        <div style={S.field}>
-          <input style={S.input} type="password" placeholder="Password" />
-        </div>
-        <button style={S.btn} onClick={() => { setScreen("dashboard"); }}>
-          Sign in</button>
-        {/* bug #2: fake link, span with onClick */}
-        <span onClick={() => alert("Reset link sent (demo)")}
-          style={{ display: "inline-block", marginLeft: 14, color: T.accent,
-            cursor: "pointer", fontSize: 13 }}>Forgot password?</span>
-      </div>
-    </div>
-  );
-
-  const statusMap =
-    "data:image/svg+xml;utf8," +
-    encodeURIComponent(
-      `<svg xmlns='http://www.w3.org/2000/svg' width='560' height='90'><rect width='560' height='90' fill='#1d2836'/><circle cx='90' cy='40' r='9' fill='#34d399'/><circle cx='260' cy='40' r='9' fill='#34d399'/><circle cx='430' cy='40' r='9' fill='#fbbf24'/><text x='90' y='72' fill='#8fa3b8' font-size='11' text-anchor='middle' font-family='sans-serif'>Zurich</text><text x='260' y='72' fill='#8fa3b8' font-size='11' text-anchor='middle' font-family='sans-serif'>Bern</text><text x='430' y='72' fill='#8fa3b8' font-size='11' text-anchor='middle' font-family='sans-serif'>Geneve</text></svg>`
-    );
-
-  const promos = ["🎉 Double data weekend — this weekend only",
-    "📱 Trade in your old phone, get CHF 100 credit",
-    "🌍 Roaming in EU now included on all plans"];
-
-  const Dashboard = (
-    <div style={{ maxWidth: 640, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 26, letterSpacing: "-.02em", margin: "0 0 6px" }}>
-        Account overview</h1>
-      {/* bug #7: low contrast text */}
-      <p style={{ color: "#4a5a6d", fontSize: 13, margin: "0 0 18px" }}>
-        Last synced a few moments ago</p>
-
-      {/* bug #13: autoplay carousel, no pause */}
-      <div style={{ ...S.card, background: T.accentDim, color: "#04141a",
-        fontWeight: 700, display: "flex", alignItems: "center", minHeight: 30 }}>
-        {promos[carousel]}
-      </div>
-
-      <div style={S.card}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div style={S.tile}><div style={{ fontSize: 28, fontWeight: 800 }}>CHF 49.90</div>
-            <div style={{ fontSize: 12, color: T.dim, textTransform: "uppercase" }}>Plan</div></div>
-          <div style={S.tile}><div style={{ fontSize: 28, fontWeight: 800 }}>18 GB</div>
-            <div style={{ fontSize: 12, color: T.dim, textTransform: "uppercase" }}>Data used</div></div>
-        </div>
-
-        <p style={{ color: T.dim, fontSize: 14, marginTop: 16 }}>Network status:</p>
-        {/* bug #4: no alt */}
-        <img src={statusMap} width="560" style={{ maxWidth: "100%",
-          borderRadius: 8, border: `1px solid ${T.line}` }} />
-
-        {/* bug #5: colour-only status legend */}
-        <div style={{ display: "flex", gap: 20, marginTop: 12 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: T.dim }}>
-            <span style={{ width: 12, height: 12, borderRadius: 99, background: T.good }} /> </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: T.dim }}>
-            <span style={{ width: 12, height: 12, borderRadius: 99, background: T.warn }} /> </span>
-        </div>
-      </div>
-
-      <div style={S.card}>
-        {/* bug #6: h1 -> h4 skip */}
-        <h4 style={{ fontSize: 19, letterSpacing: "-.02em", margin: "0 0 .4em" }}>
-          Manage your plan</h4>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button style={S.btn} onClick={() => setScreen("support")}>Contact support</button>
-          {/* bug #8: div as button */}
-          <div onClick={() => alert("Downgrade started (demo)")}
-            style={{ ...S.btn, ...S.ghost, display: "inline-block" }}>Downgrade plan</div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const Support = (
-    <div style={{ maxWidth: 560, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 26, letterSpacing: "-.02em", margin: "0 0 6px" }}>
-        Contact support</h1>
-      <p style={{ color: T.dim, fontSize: 14, margin: "0 0 18px" }}>
-        Open a ticket and our team will reply by email.</p>
-
-      <div style={S.card}>
-        {/* bug #10: required indicated by red * only */}
-        <div style={S.field}>
-          <label style={S.label} htmlFor="nm">
-            Full name <span style={{ color: T.bad }}>*</span></label>
-          <input id="nm" style={S.input} type="text" />
-        </div>
-        <div style={S.field}>
-          <label style={S.label} htmlFor="em">
-            Email <span style={{ color: T.bad }}>*</span></label>
-          <input id="em" style={S.input} type="email" />
-        </div>
-        <div style={S.field}>
-          <label style={S.label} htmlFor="ms">Message</label>
-          <textarea id="ms" style={{ ...S.input, minHeight: 90 }} />
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button style={S.btn} onClick={() => setFormErr(true)}>Submit ticket</button>
-          <button style={{ ...S.btn, ...S.ghost }} onClick={() => setShowModal(true)}>
-            Support hours</button>
-        </div>
-        {/* bug #9: error not announced, not tied to field */}
-        {formErr && (
-          <div style={{ color: T.bad, fontSize: 13, marginTop: 12 }}>
-            Please complete the required fields.</div>
-        )}
-      </div>
-      <button style={{ ...S.btn, ...S.ghost }} onClick={() => setScreen("dashboard")}>
-        ← Back to dashboard</button>
-    </div>
-  );
+  const usageChart="data:image/svg+xml;utf8,"+encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='540' height='90'><rect width='540' height='90' fill='#f7f9fc'/><rect x='30' y='40' width='46' height='36' fill='#0a5bd3'/><rect x='106' y='28' width='46' height='48' fill='#0a5bd3'/><rect x='182' y='16' width='46' height='60' fill='#0a5bd3'/><rect x='258' y='34' width='46' height='42' fill='#0a5bd3'/><rect x='334' y='22' width='46' height='54' fill='#0a5bd3'/><rect x='410' y='46' width='46' height='30' fill='#0a5bd3'/></svg>`);
+  const statusMap="data:image/svg+xml;utf8,"+encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='540' height='78'><rect width='540' height='78' fill='#f7f9fc'/><circle cx='88' cy='32' r='9' fill='#1c7a3e'/><circle cx='256' cy='32' r='9' fill='#1c7a3e'/><circle cx='424' cy='32' r='9' fill='#c98a00'/><text x='88' y='62' fill='#5a6572' font-size='11' text-anchor='middle' font-family='sans-serif'>Zurich</text><text x='256' y='62' fill='#5a6572' font-size='11' text-anchor='middle' font-family='sans-serif'>Bern</text><text x='424' y='62' fill='#5a6572' font-size='11' text-anchor='middle' font-family='sans-serif'>Geneve</text></svg>`);
 
   return (
-    <div style={{ background: T.bg, color: T.ink, fontFamily: T.sans, minHeight: "100vh" }}>
-      <style>{`@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+    <div style={{background:T.bg,color:T.ink,fontFamily:T.sans,minHeight:"100vh"}}>
+      <style>{`
         *{box-sizing:border-box}
-        /* Visible focus for the accessible tracker panel only (the left-hand demo app keeps its planted bugs). */
-        aside[aria-label="Defect tracker"] button:focus-visible,
-        aside[aria-label="Defect tracker"] input:focus-visible{
-          outline:3px solid #22d3ee; outline-offset:2px; border-radius:6px;}
-        aside[aria-label="Defect tracker"] button{ font-family:inherit; }
-        /* Readable placeholder in the team-name box (default grey fails contrast on the dark input). */
-        aside[aria-label="Defect tracker"] input::placeholder{ color:#9fb2c6; opacity:1; }`}</style>
+        @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px" }}>
-        {/* ---------- STAGE ---------- */}
-        <div style={{ borderRight: `1px solid ${T.line}` }}>
-          {/* topbar */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 28px",
-            background: T.panel2, borderBottom: `1px solid ${T.line}` }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}>
-              <span style={{ width: 26, height: 26, borderRadius: 7,
-                background: `linear-gradient(135deg,${T.accent},${T.accentDim})`,
-                display: "grid", placeItems: "center", color: "#04141a", fontWeight: 800 }}>M</span>
-              MyTelco</span>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-              {screen !== "login" && ["dashboard", "support"].map((s) => (
-                <button key={s} onClick={() => setScreen(s)}
-                  style={{ ...S.btn, ...S.ghost, padding: "7px 12px", fontSize: 12,
-                    ...(screen === s ? { background: T.accentDim, color: T.ink } : {}) }}>
-                  {s}</button>
-              ))}
-            </div>
+        /* CORRECT BY DESIGN: everything in the app under test gets a clear focus ring,
+           so the one place it is missing (defect 6) stands out by comparison. */
+        #app button:focus-visible, #app a:focus-visible, #app input:focus-visible,
+        #app select:focus-visible, #app textarea:focus-visible, #app [tabindex]:focus-visible{
+          outline:3px solid ${T.focus}; outline-offset:2px; border-radius:8px;
+        }
+        /* PLANTED DEFECT 6: focus suppressed on the quick links only */
+        #app .quick a:focus, #app .quick a:focus-visible{ outline:none; }
+
+        /* The facilitator panel is intentionally OUTSIDE the test:
+           removed from the tab order so it never appears in a keyboard pass. */
+        #tracker button:focus-visible, #tracker input:focus-visible, #tracker select:focus-visible{
+          outline:2px dashed ${T.brand}; outline-offset:2px;
+        }
+        #tracker input::placeholder{color:#6b7684;opacity:1}
+      `}</style>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 390px",minHeight:"100vh"}}>
+
+        {/* ================= APP UNDER TEST ================= */}
+        <div id="app" style={{borderRight:`1px solid ${T.line}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 28px",
+            background:T.surface,borderBottom:`1px solid ${T.line}`}}>
+            <span style={{display:"flex",alignItems:"center",gap:10,fontWeight:750}}>
+              <span style={{width:26,height:26,borderRadius:7,display:"grid",placeItems:"center",
+                background:T.brand,color:"#fff",fontWeight:800,fontSize:14}}>M</span>MyTelco</span>
+            <span style={{marginLeft:"auto",fontSize:13,color:T.muted}}>Self-service portal</span>
           </div>
-          <div style={{ padding: "32px 28px" }}>
-            {screen === "login" ? Login : screen === "dashboard" ? Dashboard : Support}
+
+          <div style={{padding:"26px 28px 56px",maxWidth:700}}>
+            <h1 style={{fontSize:27,letterSpacing:"-.02em",margin:"0 0 4px"}}>Account overview</h1>
+            {/* DEFECT 2: low contrast */}
+            <p style={{color:"#c2c8d0",fontSize:13,margin:"0 0 4px"}}>Last synced a few moments ago</p>
+            {/* correct counterpart: readable secondary text */}
+            <p style={{color:T.muted,fontSize:13,margin:"0 0 20px"}}>Account 7741 0092 · Zurich region</p>
+
+            {/* quick links - DEFECT 6 lives here (focus ring suppressed) */}
+            <div className="quick" style={{display:"flex",gap:18,margin:"0 0 22px",fontSize:14}}>
+              <a href="#billing" style={{color:T.brand}}>Billing</a>
+              <a href="#roaming" style={{color:T.brand}}>Roaming</a>
+              <a href="#devices" style={{color:T.brand}}>Devices</a>
+            </div>
+
+            <div style={S.card}>
+              {/* correct h2 */}
+              <h2 style={S.h2}>Your usage</h2>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
+                <div style={{background:T.panel,borderRadius:10,padding:16}}>
+                  <div style={{fontSize:25,fontWeight:800}}>CHF 49.90</div>
+                  <div style={{fontSize:12,color:T.muted,textTransform:"uppercase"}}>Monthly plan</div></div>
+                <div style={{background:T.panel,borderRadius:10,padding:16}}>
+                  <div style={{fontSize:25,fontWeight:800}}>18 GB</div>
+                  <div style={{fontSize:12,color:T.muted,textTransform:"uppercase"}}>Data used</div></div>
+              </div>
+              {/* CORRECT: image with a meaningful alt */}
+              <img src={usageChart} width="540" alt="Data use by month: highest in March at 22 GB, lowest in June at 11 GB."
+                   style={{maxWidth:"100%",borderRadius:8,border:`1px solid ${T.line}`}} />
+              <p style={{...S.muted,marginTop:16}}>Network status:</p>
+              {/* DEFECT 3: no alt */}
+              <img src={statusMap} width="540"
+                   style={{maxWidth:"100%",borderRadius:8,border:`1px solid ${T.line}`}} />
+            </div>
+
+            <div style={S.card}>
+              {/* DEFECT 4: h1 -> h4 skip */}
+              <h4 style={{fontSize:19,margin:"0 0 10px",letterSpacing:"-.01em"}}>Manage your plan</h4>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+                {/* CORRECT: real button */}
+                <button style={S.btn} onClick={()=>alert("Upgrade started (demo)")}>Upgrade plan</button>
+                {/* DEFECT 5: div dressed as a button */}
+                <div onClick={()=>alert("Downgrade started (demo)")} style={{...S.btn2,display:"inline-block"}}>
+                  Downgrade plan</div>
+              </div>
+
+              {/* CORRECT: a proper disclosure - keyboard operable, state announced */}
+              <button style={{...S.btn2,marginTop:16}} aria-expanded={details}
+                      onClick={()=>setDet(d=>!d)}>
+                {details?"Hide":"Show"} plan details</button>
+              {details && (
+                <p style={{...S.muted,marginTop:12}}>Unlimited calls and SMS in Switzerland,
+                  20 GB data, EU roaming included. Minimum term 12 months.</p>
+              )}
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}}>
+              <div style={S.card}>
+                <h2 style={S.h2}>Contact support</h2>
+                {/* DEFECT 1: placeholder instead of a label */}
+                <div style={S.field}>
+                  <input style={S.input} type="text" placeholder="Full name" />
+                </div>
+                {/* CORRECT: properly labelled */}
+                <div style={S.field}>
+                  <label style={S.label} htmlFor="em">Email address</label>
+                  <input id="em" style={S.input} type="email" />
+                </div>
+                <button style={S.btn} onClick={()=>setErr(true)}>Submit ticket</button>
+                <button style={{...S.btn2,marginLeft:8}} onClick={()=>setModal(true)}>Support hours</button>
+                {/* DEFECT 8: error not announced, not tied to the field */}
+                {err && <div style={{color:T.bad,fontSize:13,marginTop:12}}>
+                  Please complete the required fields.</div>}
+              </div>
+
+              <div style={S.card}>
+                <h2 style={S.h2}>Newsletter</h2>
+                {/* CORRECT: labelled field + live region for the result */}
+                <div style={S.field}>
+                  <label style={S.label} htmlFor="nl">Email for updates</label>
+                  <input id="nl" style={S.input} type="email"
+                         value={news} onChange={e=>setNews(e.target.value)}
+                         aria-describedby="nlmsg" />
+                </div>
+                <button style={S.btn} onClick={()=>setNews(n=>n?n:"")}>Subscribe</button>
+                <div id="nlmsg" role="status" style={{fontSize:13,marginTop:12,
+                     color:news?T.good:T.muted}}>
+                  {news? "Thanks - we will send updates to "+news : "We will confirm here after you subscribe."}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* ---------- INSPECTOR (this panel is intentionally ACCESSIBLE) ---------- */}
-        <aside aria-label="Defect tracker" style={{ background: T.panel, padding: 24,
-          position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
-          <h2 style={{ fontFamily: T.sans, fontSize: 14, fontWeight: 700, letterSpacing: ".08em",
-            textTransform: "uppercase", color: T.accent, margin: "0 0 4px" }}>Defect Tracker</h2>
-          <p style={{ fontSize: 14, color: T.chromeMuted, margin: "0 0 16px", fontFamily: T.sans }}>
-            MyTelco portal · {BUGS.length} planted issues</p>
+        {/* ============ FACILITATOR PANEL (outside the test) ============ */}
+        <aside id="tracker" aria-label="Defect tracker (facilitator panel)"
+          style={{background:T.surface,padding:24,position:"sticky",top:0,
+            height:"100vh",overflowY:"auto",borderLeft:`1px solid ${T.line}`}}>
 
-          {/* team + timer */}
+          <div style={{background:"#fff8e6",border:"1px solid #f0d488",borderRadius:8,
+            padding:"8px 11px",fontSize:12,color:"#6b4a00",marginBottom:16}}>
+            Facilitator panel — deliberately kept out of the tab order, so it never
+            shows up in your keyboard or screen-reader pass.
+          </div>
+
+          <h2 style={{fontSize:14,fontWeight:750,letterSpacing:".07em",textTransform:"uppercase",
+            color:T.brand,margin:"0 0 4px"}}>Defect tracker</h2>
+          <p style={{fontSize:14,color:T.muted,margin:"0 0 16px"}}>
+            One page · {BUGS.length} planted defects · not everything is broken, compare as you go</p>
+
           {!started ? (
-            <div style={{ ...S.card, margin: "0 0 16px" }}>
-              <label style={{ ...S.label, color: T.chromeText, fontSize: 14 }} htmlFor="team">
-                Team name</label>
-              <input id="team" style={{ ...S.input, outline: "revert" }} value={team}
-                onChange={(e) => setTeam(e.target.value)} placeholder="e.g. Focus Trap Four" />
-              <label style={{ ...S.label, color: T.chromeText, fontSize: 14, marginTop: 14 }}
-                htmlFor="reveal">Reveal the defect list after</label>
-              <select id="reveal" value={revealMins}
-                onChange={(e) => setRevealMins(Number(e.target.value))}
-                style={{ ...S.input, outline: "revert" }}>
-                <option value={0}>No delay — show immediately</option>
-                <option value={3}>3 minutes</option>
+            <div style={{background:T.panel,border:`1px solid ${T.line}`,borderRadius:12,padding:18}}>
+              <label style={{...S.label,fontSize:14}} htmlFor="team">Team name</label>
+              <input id="team" tabIndex={-1} style={S.input} value={team}
+                     onChange={e=>setTeam(e.target.value)} placeholder="e.g. Focus Trap Four" />
+              <label style={{...S.label,fontSize:14,marginTop:14}} htmlFor="rev">
+                Reveal the details after</label>
+              <select id="rev" tabIndex={-1} value={mins} style={S.input}
+                      onChange={e=>setMins(Number(e.target.value))}>
+                <option value={0}>No delay</option>
                 <option value={5}>5 minutes</option>
                 <option value={10}>10 minutes</option>
                 <option value={15}>15 minutes</option>
               </select>
-              <p style={{ fontSize: 13, color: T.chromeMuted, margin: "8px 0 0", lineHeight: 1.5 }}>
-                Hunt with the tools first. The descriptions stay hidden until the timer
-                ends — you can still tick off what you find.</p>
-              <button style={{ ...S.btn, marginTop: 14, width: "100%", outline: "revert" }}
-                onClick={() => setStarted(true)}>Start the hunt</button>
+              <p style={{fontSize:13,color:T.muted,margin:"10px 0 0",lineHeight:1.5}}>
+                Hunt with the tools first. Tick the type of each defect you find; the full
+                descriptions unlock when the timer ends.</p>
+              <button tabIndex={-1} style={{...S.btn,marginTop:14,width:"100%"}}
+                      onClick={()=>setStart(true)}>Start the hunt</button>
             </div>
           ) : (
-            <div style={{ display: "flex", justifyContent: "space-between",
-              alignItems: "center", fontFamily: T.sans, fontSize: 15, marginBottom: 16 }}>
-              <span style={{ color: T.chromeText, fontWeight: 600 }}>{team || "Team 1"}</span>
-              <span style={{ color: T.accent, fontWeight: 600 }} aria-label={`Elapsed time ${mm} minutes ${ss} seconds`}>
-                <span aria-hidden="true">⏱ </span>{mm}:{ss}</span>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+              fontSize:15,marginBottom:14}}>
+              <span style={{fontWeight:650}}>{team||"Team 1"}</span>
+              <span style={{color:T.brand,fontWeight:700}}>⏱ {mm}:{ss}</span>
             </div>
           )}
 
           {started && (
-          <div style={{ fontFamily: T.sans, fontSize: 15, color: T.chromeText, marginBottom: 14 }}>
-            <span aria-live="polite">Found: <b style={{ color: T.good, fontSize: 20 }}>{count}</b>
-              <span style={{ color: T.chromeMuted }}> / {BUGS.length}</span></span>
-            <div role="progressbar" aria-valuenow={count} aria-valuemin={0} aria-valuemax={BUGS.length}
-              aria-label="Defects found"
-              style={{ height: 8, background: T.panel2, borderRadius: 99, marginTop: 8,
-                border: `1px solid ${T.line}` }}>
-              <div style={{ height: "100%", width: `${(count / BUGS.length) * 100}%`,
-                background: T.good, borderRadius: 99, transition: "width .3s" }} />
+            <div style={{fontSize:15,marginBottom:16}}>
+              Found: <b style={{color:T.good,fontSize:20}}>{count}</b>
+              <span style={{color:T.muted}}> / {BUGS.length}</span>
+              <div style={{height:8,background:T.panel,border:`1px solid ${T.line}`,
+                borderRadius:99,marginTop:8}}>
+                <div style={{height:"100%",width:`${count/BUGS.length*100}%`,
+                  background:T.good,borderRadius:99,transition:"width .3s"}} />
+              </div>
             </div>
-          </div>
           )}
 
-          {/* Before start: nothing below. After start but not revealed: locked panel. */}
           {started && !revealed && (
-            <div style={{ ...S.card, textAlign: "center" }} role="status">
-              <div aria-hidden="true" style={{ fontSize: 30, marginBottom: 6 }}>🔒</div>
-              <p style={{ fontSize: 15, fontWeight: 600, color: T.chromeText, margin: "0 0 4px" }}>
-                Defect list unlocks in</p>
-              <p style={{ fontSize: 34, fontWeight: 800, color: T.accent, margin: "0 0 6px",
-                fontVariantNumeric: "tabular-nums" }}>{rmm}:{rss}</p>
-              <p style={{ fontSize: 13, color: T.chromeMuted, margin: "0 0 16px", lineHeight: 1.5 }}>
-                Hunt with your tools first. When you find a defect, tick its type below.
-                The full descriptions and the automation verdict unlock when the timer ends.</p>
-
-              {/* short-label tick boxes: enough to record a find, not enough to locate it */}
-              <ul style={{ listStyle: "none", padding: 0, margin: "0 0 16px",
-                display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-                {BUGS.map((b) => (
+            <div style={{background:T.panel,border:`1px solid ${T.line}`,borderRadius:12,
+              padding:18,textAlign:"center"}}>
+              <div style={{fontSize:24}}>🔒</div>
+              <p style={{fontSize:15,fontWeight:650,margin:"4px 0 2px"}}>Details unlock in</p>
+              <p style={{fontSize:31,fontWeight:800,color:T.brand,margin:"0 0 14px"}}>{rmm}:{rss}</p>
+              <ul style={{listStyle:"none",padding:0,margin:"0 0 14px",display:"grid",gap:8}}>
+                {BUGS.map(b=>(
                   <li key={b.id}>
-                    <button
-                      onClick={() => toggleFix(b.id)}
-                      aria-pressed={!!fixed[b.id]}
-                      aria-label={fixed[b.id] ? `Mark "${b.label}" as not found`
-                                              : `Mark "${b.label}" as found`}
-                      style={{ width: "100%", display: "flex", alignItems: "center", gap: 8,
-                        padding: "8px 10px", borderRadius: 8, cursor: "pointer", textAlign: "left",
-                        border: `1px solid ${T.line}`,
-                        background: fixed[b.id] ? "rgba(52,211,153,.12)" : T.panel,
-                        color: T.chromeText, font: "inherit", fontSize: 13, lineHeight: 1.3 }}>
-                      <span aria-hidden="true" style={{ width: 18, height: 18, borderRadius: 4,
-                        flexShrink: 0, display: "grid", placeItems: "center", fontSize: 12,
-                        fontWeight: 800, color: "#04141a",
-                        border: `2px solid ${fixed[b.id] ? T.good : T.chromeMuted}`,
-                        background: fixed[b.id] ? T.good : "transparent" }}>
-                        {fixed[b.id] ? "✓" : ""}</span>
+                    <button tabIndex={-1} onClick={()=>toggle(b.id)} aria-pressed={!!found[b.id]}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:9,
+                        padding:"9px 11px",borderRadius:8,cursor:"pointer",textAlign:"left",
+                        border:`1px solid ${T.line}`,font:"inherit",fontSize:13.5,
+                        background:found[b.id]?"#e4f4e9":T.surface,
+                        color:found[b.id]?T.good:T.ink}}>
+                      <span style={{width:18,height:18,borderRadius:4,flexShrink:0,
+                        display:"grid",placeItems:"center",fontSize:12,fontWeight:800,color:"#fff",
+                        border:`2px solid ${found[b.id]?T.good:"#9aa4b0"}`,
+                        background:found[b.id]?T.good:"transparent"}}>
+                        {found[b.id]?"✓":""}</span>
                       {b.label}
                     </button>
                   </li>
                 ))}
               </ul>
-
-              <button onClick={() => setForceReveal(true)}
-                style={{ ...S.btn, ...S.ghost, width: "100%", outline: "revert", fontSize: 13 }}>
-                Facilitator: reveal now</button>
+              <button tabIndex={-1} onClick={()=>setForce(true)}
+                style={{...S.btn2,width:"100%",fontSize:13}}>Facilitator: reveal now</button>
             </div>
           )}
 
           {revealed && (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-          {BUGS.map((b) => (
-            <li key={b.id} style={{ border: `1px solid ${T.line}`, borderRadius: 9,
-              margin: "0 0 10px", background: T.panel2, overflow: "hidden" }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "12px 13px" }}>
-                {/* real toggle button — labelled, keyboard-operable, visible focus */}
-                <button
-                  onClick={() => toggleFix(b.id)}
-                  aria-pressed={!!fixed[b.id]}
-                  aria-label={fixed[b.id] ? `Mark "${b.title}" as not found` : `Mark "${b.title}" as found`}
-                  style={{ width: 22, height: 22, borderRadius: 5, flexShrink: 0, marginTop: 1,
-                    border: `2px solid ${fixed[b.id] ? T.good : T.chromeMuted}`, padding: 0,
-                    background: fixed[b.id] ? T.good : "transparent", cursor: "pointer",
-                    display: "grid", placeItems: "center", fontSize: 13, fontWeight: 800,
-                    color: "#04141a" }}>
-                  <span aria-hidden="true">{fixed[b.id] ? "✓" : ""}</span>
-                </button>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4, display: "block",
-                    color: fixed[b.id] ? T.chromeMuted : T.ink,
-                    textDecoration: fixed[b.id] ? "line-through" : "none" }}>{b.title}</span>
-                  <span style={{ fontFamily: T.sans, fontSize: 13, color: T.chromeMuted, display: "block",
-                    marginTop: 4 }}>#{b.id} · {b.wcag}</span>
-                </div>
-              </div>
-              {/* extended info always shown once revealed */}
-              <div style={{ padding: "0 13px 13px 45px", fontSize: 13, color: T.chromeText }}>
-                <span style={{ fontFamily: T.sans, fontSize: 12, fontWeight: 600, padding: "3px 9px",
-                  borderRadius: 5, marginRight: 6, border: `1px solid ${T.accentDim}`,
-                  color: T.accent }}>{b.pour}</span>
-                <span style={{ fontFamily: T.sans, fontSize: 12, fontWeight: 600, padding: "3px 9px",
-                  borderRadius: 5, border: `1px solid #b0830f`, color: "#f0b429" }}>{b.sdlc}</span>
-                <p style={{ margin: "10px 0", lineHeight: 1.5 }}>{b.note}</p>
-                <p style={{ margin: 0, fontFamily: T.sans, fontSize: 13, fontWeight: 600 }}>
-                  AUTOMATION{" "}
-                  <b style={{ color: b.auto === "catch" ? T.good : "#ff8a8a" }}>
-                    {b.auto === "catch" ? "✔ CATCHES" : "✘ MISSES"}</b></p>
-              </div>
-            </li>
-          ))}
-          </ul>
+            <ul style={{listStyle:"none",padding:0,margin:0}}>
+              {BUGS.map(b=>(
+                <li key={b.id} style={{border:`1px solid ${T.line}`,borderRadius:10,
+                  margin:"0 0 10px",background:T.surface}}>
+                  <div style={{display:"flex",gap:10,alignItems:"flex-start",padding:"12px 13px"}}>
+                    <button tabIndex={-1} onClick={()=>toggle(b.id)} aria-pressed={!!found[b.id]}
+                      style={{width:22,height:22,borderRadius:5,flexShrink:0,marginTop:1,padding:0,
+                        cursor:"pointer",display:"grid",placeItems:"center",fontSize:13,
+                        fontWeight:800,color:"#fff",
+                        border:`2px solid ${found[b.id]?T.good:"#9aa4b0"}`,
+                        background:found[b.id]?T.good:"transparent"}}>
+                      {found[b.id]?"✓":""}</button>
+                    <div style={{flex:1}}>
+                      <span style={{fontSize:14,fontWeight:650,lineHeight:1.4,display:"block",
+                        color:found[b.id]?T.muted:T.ink,
+                        textDecoration:found[b.id]?"line-through":"none"}}>{b.title}</span>
+                      <span style={{fontSize:12.5,color:T.muted,display:"block",marginTop:4}}>
+                        #{b.id} · WCAG {b.wcag} · {b.pour}</span>
+                    </div>
+                  </div>
+                  <div style={{padding:"0 13px 13px 45px",fontSize:13,color:T.ink}}>
+                    <p style={{margin:"0 0 8px",lineHeight:1.5}}>{b.note}</p>
+                    <p style={{margin:"0 0 8px",lineHeight:1.5,color:T.muted}}>
+                      <b style={{color:T.good}}>Correct version:</b> {b.compare}</p>
+                    <p style={{margin:0,fontSize:13,fontWeight:650}}>
+                      Scanner:{" "}
+                      <b style={{color:b.auto==="scanner"?T.good:T.bad}}>
+                        {b.auto==="scanner"?"✔ detects it":"✘ cannot detect"}</b></p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
 
           {won && (
-            <div role="status" style={{ textAlign: "center", padding: 20, background: T.panel2,
-              border: `2px solid ${T.good}`, borderRadius: 10, marginTop: 8 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: T.good }}>
-                <span aria-hidden="true">🎉 </span>Escaped in {mm}:{ss}!</div>
-              <p style={{ margin: "8px 0 0", fontSize: 14, color: T.chromeText, lineHeight: 1.5 }}>
-                {BUGS.filter((b) => b.auto === "miss").length} of these {BUGS.length} bugs
-                would have slipped past a fully automated pipeline. That gap is the workshop.</p>
+            <div style={{textAlign:"center",padding:16,background:"#e4f4e9",
+              border:`2px solid ${T.good}`,borderRadius:10,marginTop:10}}>
+              <div style={{fontSize:20,fontWeight:800,color:T.good}}>All {BUGS.length} found in {mm}:{ss}</div>
+              <p style={{margin:"8px 0 0",fontSize:14,lineHeight:1.5}}>
+                {BUGS.filter(b=>b.auto==="human").length} of these {BUGS.length} would have
+                slipped past an automated scan.</p>
             </div>
           )}
         </aside>
       </div>
 
-      {/* bug #11 + #12: trap modal, icon-only close with no name */}
-      {showModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(6,10,15,.72)",
-          display: "grid", placeItems: "center", padding: 20, zIndex: 50 }}>
-          <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14,
-            padding: 26, maxWidth: 420, width: "100%", position: "relative" }}>
-            {/* bug #12: icon-only, no aria-label */}
-            <div onClick={() => setShowModal(false)}
-              style={{ position: "absolute", top: 14, right: 16, cursor: "pointer",
-                fontSize: 18, color: T.dim }}>✕</div>
-            <h3 style={{ margin: "0 0 .4em", fontSize: 15 }}>Support hours</h3>
-            <p style={{ color: T.dim, fontSize: 14 }}>
-              Available Mon–Fri, 08:00–18:00 CET. For outages call 0800 000 000 any time.</p>
-            {/* bug #11: no Esc handler, no focus management, mouse-only close */}
-            <button style={{ ...S.btn, marginTop: 12 }} onClick={() => setShowModal(false)}>
-              Got it</button>
+      {/* DEFECT 7: no Esc, no focus management, mouse-only escape */}
+      {modal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(22,25,29,.45)",display:"grid",
+          placeItems:"center",padding:20,zIndex:50}}>
+          <div style={{background:"#fff",border:`1px solid ${T.line}`,borderRadius:14,
+            padding:26,maxWidth:420,width:"100%"}}>
+            <h3 style={{margin:"0 0 8px",fontSize:17}}>Support hours</h3>
+            <p style={{color:T.muted,fontSize:14,margin:0,lineHeight:1.5}}>
+              Mon–Fri, 08:00–18:00 CET. For outages call 0800 000 000 any time.</p>
+            <button style={{...S.btn,marginTop:16}} onClick={()=>setModal(false)}>Got it</button>
           </div>
         </div>
       )}
@@ -489,22 +393,17 @@ function App() {
   );
 }
 
-
 (function mount(){
-  var status = document.getElementById("status");
-  try {
-    if (typeof React === "undefined" || typeof ReactDOM === "undefined") {
-      status.innerHTML = '<div class="err">Could not load React from the CDN.<br>' +
-        'This page needs internet access on first load. If you are on a restricted ' +
-        'network that blocks <code>cdn.jsdelivr.net</code>, try another network ' +
-        '(or use the offline HTML version).</div>';
+  const s=document.getElementById("status");
+  try{
+    if(typeof React==="undefined"||typeof ReactDOM==="undefined"){
+      s.innerHTML='<div class="err">Could not load React from the CDN. This page needs internet access on first load.</div>';
       return;
     }
     ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
-    status.classList.add("hidden");
-  } catch (e) {
-    status.innerHTML = '<div class="err">The app failed to start.<br><code>' +
-      String(e && e.message ? e.message : e) + '</code></div>';
+    s.classList.add("hidden");
+  }catch(e){
+    s.innerHTML='<div class="err">The app failed to start.<br>'+String(e&&e.message?e.message:e)+'</div>';
     console.error(e);
   }
 })();
